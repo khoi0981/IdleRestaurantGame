@@ -83,7 +83,7 @@ AnimatorController:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: Character
+  m_Name: Player_Character
   serializedVersion: 5
   m_AnimatorParameters:
   - m_Name: Speed
@@ -143,7 +143,7 @@ AnimatorStateMachine:
   m_ChildStates:
   - serializedVersion: 1
     m_State: {fileID: -8761032034956560077}
-    m_Position: {x: 390, y: 80, z: 0}
+    m_Position: {x: 390, y: 50, z: 0}
   - serializedVersion: 1
     m_State: {fileID: 1045694204656233669}
     m_Position: {x: 390, y: 190, z: 0}

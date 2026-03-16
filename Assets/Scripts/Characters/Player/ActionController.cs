@@ -11,6 +11,7 @@ public class ActionController : MonoBehaviour
     private bool isWorking = false;
     private bool isProcessing = false;
     private bool canPut = true;
+
     private void Awake()
     {
         canPut = true;
@@ -18,6 +19,7 @@ public class ActionController : MonoBehaviour
         inventory = GetComponent<Inventory>();
         takeCooldown = new WaitForSeconds(0.5f);
     }
+
     private void Update()
     {
         if (Input.GetMouseButtonDown(0))
@@ -46,14 +48,22 @@ public class ActionController : MonoBehaviour
             }
         }
     }
+
     private void DoAction()
     {
-        anim.SetTrigger("Take");
+        if (anim != null)
+        {
+            // Tạm thời comment lại nếu Animator của Player chưa làm animation Take
+            // anim.SetTrigger("Take"); 
+        }
+
+        DoTakeAction();
     }
+
     private void StartProcessAction()
     {
         Ray ray = new Ray(transform.position + Vector3.up / 2, transform.forward);
-        if (Physics.Raycast(ray, out RaycastHit hit, 1))
+        if (Physics.Raycast(ray, out RaycastHit hit, 1.5f))
         {
             if (hit.collider.TryGetComponent<Functionality>(out Functionality itemProcess))
             {
@@ -62,6 +72,7 @@ public class ActionController : MonoBehaviour
             }
         }
     }
+
     private void DoProcessAction()
     {
         if (!isProcessing) return;
@@ -74,11 +85,16 @@ public class ActionController : MonoBehaviour
             isWorking = false;
         }
     }
+
     public void DoTakeAction()
     {
-        Ray ray = new Ray(transform.position + Vector3.up / 2, transform.forward);
-        if (Physics.Raycast(ray, out RaycastHit hit, 1))
+        Vector3 rayStartPoint = transform.position + (Vector3.up * 1f) + (transform.forward * 0.5f);
+        Ray ray = new Ray(rayStartPoint, transform.forward);
+        Debug.DrawRay(rayStartPoint, transform.forward * 1.5f, Color.red, 2f);
+
+        if (Physics.Raycast(ray, out RaycastHit hit, 1.5f))
         {
+            // Vẫn giữ lại phần ĐẶT ĐỒ XUỐNG bằng chuột trái
             if (hit.collider.TryGetComponent<IPutItemFull>(out IPutItemFull itemPutBox))
             {
                 if (canPut)
@@ -91,32 +107,49 @@ public class ActionController : MonoBehaviour
                     }
                 }
             }
-            if (hit.collider.TryGetComponent<ItemBox>(out ItemBox itemBox))
+            // Đã xóa lệnh nhận đồ (ItemBox) ở đây vì giờ ta dùng Trigger bên dưới
+        }
+    }
+
+    // --- ĐÂY LÀ PHẦN THÊM MỚI ĐỂ TỰ ĐỘNG NHẬN ĐỒ ---
+    private void OnTriggerEnter(Collider other)
+    {
+        // Kiểm tra xem vật vừa chạm có phải là bàn chứa đồ không
+        if (other.TryGetComponent<ItemBox>(out ItemBox itemBox))
+        {
+            // Chỉ lấy đồ khi tay đang trống
+            if (inventory.CurrentType == ItemType.NONE)
             {
                 inventory.TakeItem(itemBox.GetItem());
+                Debug.Log("Đã tự động lấy: " + itemBox.GetItem());
                 StartCoroutine(canPutCoolDown());
             }
-            
         }
-        
-
     }
+
     private void OnTriggerStay(Collider other)
     {
+        // Nếu không cầm HAMBURGER thì thoát ra
         if (inventory.CurrentType != ItemType.HAMBURGER) return;
-        if (other.gameObject.CompareTag("SellArea"))
+
+        // Nếu chạm vào Customer
+        if (other.gameObject.CompareTag("Customer"))
         {
-            if (Input.GetMouseButtonDown(0))
+            CustomerAI currentCustomer = other.GetComponent<CustomerAI>();
+
+            if (currentCustomer != null)
             {
-                CustomerManager.Instance.SellToCustomer();
-                inventory.ClearHand();
+                currentCustomer.ReceiveFood(); // Báo cho khách biết đã nhận đồ
+                inventory.ClearHand();         // Ẩn Burger trên tay Player
+                Debug.Log("Đã giao HAMBURGER cho khách!");
             }
         }
-    }
+    }   
+
     private IEnumerator canPutCoolDown()
     {
         canPut = false;
         yield return takeCooldown;
         canPut = true;
     }
-} 
+}

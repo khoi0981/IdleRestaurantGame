@@ -4,31 +4,40 @@ using UnityEngine.AI;
 
 public class CustomerAI : MonoBehaviour
 {
+    [Header("Menu & Order (Mới thêm)")]
+    public System.Collections.Generic.List<ItemType> availableMenu;
+    private ItemType currentOrder;
+    private bool hasOrdered = false;
+
     [Header("Cài đặt Đồ ăn & Trả tiền")]
-    [SerializeField] private GameObject requestBubble;
     [SerializeField] private GameObject burgerModel;
     [SerializeField] private int foodPrice = 50;
     [SerializeField] private float eatTime = 10f;
 
     [Header("Kết nối Hệ thống")]
     public Transform exitPoint;
+    public ItemBox kitchenDesk;
 
     private GameObject mySeat;
     private NavMeshAgent agent;
     private Animator animator;
+    private CapsuleCollider capsuleCollider;
+    private CustomerUI customerUI;
 
-    private enum CustomerState { WalkingToSeat, WaitingForFood, Eating, Leaving }
-    private CustomerState currentState = CustomerState.WalkingToSeat;
+    public enum CustomerState { WalkingToSeat, WaitingForFood, Eating, Leaving }
+    public CustomerState currentState = CustomerState.WalkingToSeat;
+
+    // Biến phụ để CustomerUI kiểm tra xem khách có đang đợi đồ không
+    public bool IsWaitingForFood => currentState == CustomerState.WaitingForFood;
 
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
+        capsuleCollider = GetComponent<CapsuleCollider>();
+        customerUI = GetComponent<CustomerUI>();
 
-        if (requestBubble != null) requestBubble.SetActive(false);
         if (burgerModel != null) burgerModel.SetActive(false);
-
-        // Đảm bảo Isate là false ban đầu
         if (animator != null) animator.SetBool("Isate", false);
 
         if (exitPoint == null)
@@ -36,6 +45,24 @@ public class CustomerAI : MonoBehaviour
             GameObject exitObj = GameObject.Find("ExitPoint");
             if (exitObj != null) exitPoint = exitObj.transform;
         }
+
+        // --- ĐOẠN CODE TỰ ĐỘNG TÌM QUẦY BẾP (ĐÃ SỬA) ---
+        if (kitchenDesk == null)
+        {
+            // Tìm chính xác Object có gắn Tag là "SellArea"
+            GameObject sellAreaObj = GameObject.FindGameObjectWithTag("SellArea");
+
+            if (sellAreaObj != null)
+            {
+                kitchenDesk = sellAreaObj.GetComponent<ItemBox>();
+            }
+
+            if (kitchenDesk == null)
+            {
+                Debug.LogWarning("Khách " + gameObject.name + " không tìm thấy Quầy Bếp (SellArea)!");
+            }
+        }
+        // --- KẾT THÚC ĐOẠN TÌM BẾP ---
 
         mySeat = FindClosestSeat();
 
@@ -56,23 +83,25 @@ public class CustomerAI : MonoBehaviour
     {
         if (currentState == CustomerState.WalkingToSeat && agent != null && mySeat != null)
         {
-            if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance + 0.3f)
+            if (agent.isActiveAndEnabled)
             {
-                if (!agent.hasPath || agent.velocity.sqrMagnitude < 0.2f)
+                if (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance + 0.3f)
                 {
-                    agent.isStopped = true;
+                    if (!agent.hasPath || agent.velocity.sqrMagnitude < 0.2f)
+                    {
+                        agent.isStopped = true;
+                        if (animator != null) animator.SetBool("IsWalking", false);
 
-                    if (animator != null) animator.SetBool("IsWalking", false);
-
-                    currentState = CustomerState.WaitingForFood;
-                    Invoke("SitDownAndOrder", 0.5f);
+                        currentState = CustomerState.WaitingForFood;
+                        Invoke("SitDownAndOrder", 0.5f);
+                    }
                 }
             }
         }
 
         if (currentState == CustomerState.Leaving && agent != null)
         {
-            if (!agent.pathPending && agent.remainingDistance <= 1.0f)
+            if (agent.isActiveAndEnabled && !agent.pathPending && agent.remainingDistance <= 1.0f)
             {
                 Destroy(gameObject);
             }
@@ -81,19 +110,15 @@ public class CustomerAI : MonoBehaviour
 
     private void SitDownAndOrder()
     {
+        if (capsuleCollider != null) capsuleCollider.isTrigger = true;
+        if (agent != null) agent.enabled = false;
+
         if (mySeat != null)
         {
-            if (agent != null) agent.updateRotation = false;
+            if (agent != null && agent.isActiveAndEnabled) agent.updateRotation = false;
+
             transform.position = mySeat.transform.position;
-
-            Transform tableTransform = mySeat.transform.parent;
-            if (tableTransform != null)
-            {
-                Vector3 directionToTable = tableTransform.position - transform.position;
-                directionToTable.y = 0;
-                transform.rotation = Quaternion.LookRotation(directionToTable);
-            }
-
+            transform.rotation = mySeat.transform.rotation;
             transform.position += transform.forward * -0.5f;
         }
 
@@ -103,32 +128,69 @@ public class CustomerAI : MonoBehaviour
             animator.SetBool("IsSitting", true);
         }
 
-        if (requestBubble != null) requestBubble.SetActive(true);
-        Debug.Log("Khách đã ngồi xuống và đang Order món!");
+        Debug.Log("Khách đã ngồi xuống...");
+
+        if (availableMenu != null && availableMenu.Count > 0)
+        {
+            int randomIndex = Random.Range(0, availableMenu.Count);
+            currentOrder = availableMenu[randomIndex];
+            hasOrdered = false;
+
+            if (customerUI != null)
+            {
+                customerUI.ShowOrderBubble(currentOrder);
+            }
+            Debug.Log("Khách muốn gọi món: " + currentOrder);
+        }
     }
 
-    public void ReceiveFood()
+    public void ConfirmOrder()
     {
-        if (currentState != CustomerState.WaitingForFood) return;
-        Debug.Log("Khách đã nhận được Burger!");
+        if (currentState == CustomerState.WaitingForFood && !hasOrdered)
+        {
+            hasOrdered = true;
+            Debug.Log("Player đã chốt đơn món: " + currentOrder);
 
-        if (requestBubble != null) requestBubble.SetActive(false);
+            if (customerUI != null) customerUI.ShowWaitingBubble();
+
+            if (kitchenDesk != null)
+            {
+                kitchenDesk.SetType(currentOrder);
+                Debug.Log("Bếp đã lên món: " + currentOrder);
+            }
+        }
+    }
+
+    public bool ReceiveFood(ItemType foodBroughtByPlayer)
+    {
+        if (currentState != CustomerState.WaitingForFood || !hasOrdered) return false;
+
+        if (foodBroughtByPlayer != currentOrder)
+        {
+            Debug.Log("Sai món rồi! Tôi gọi " + currentOrder + " cơ!");
+            return false;
+        }
+
+        Debug.Log("Khách đã nhận đúng món " + currentOrder + "!");
+
+        if (customerUI != null) customerUI.HideAllBubbles();
+
         if (burgerModel != null) burgerModel.SetActive(true);
 
         currentState = CustomerState.Eating;
         StartCoroutine(EatAndPayRoutine());
+
+        return true;
     }
 
     private IEnumerator EatAndPayRoutine()
     {
-        // Chờ thời gian ăn (10 giây)
         yield return new WaitForSeconds(eatTime);
 
-        // --- SỬA Ở ĐÂY: Ăn xong thì chuyển Isate thành true ---
         if (animator != null)
         {
             animator.SetBool("Isate", true);
-            animator.SetBool("IsSitting", false); // Tắt animation ngồi
+            animator.SetBool("IsSitting", false);
         }
 
         if (DataManager.Instance != null)
@@ -147,15 +209,20 @@ public class CustomerAI : MonoBehaviour
     {
         currentState = CustomerState.Leaving;
 
+        if (capsuleCollider != null) capsuleCollider.isTrigger = false;
+        if (agent != null) agent.enabled = true;
+
         if (agent != null && exitPoint != null)
         {
-            agent.isStopped = false;
-            agent.updateRotation = true;
-            agent.SetDestination(exitPoint.position);
+            if (agent.isActiveAndEnabled)
+            {
+                agent.isStopped = false;
+                agent.updateRotation = true;
+                agent.SetDestination(exitPoint.position);
+            }
 
             if (animator != null)
             {
-                // Isate đã được bật ở trên, ở đây ta có thể bật lại IsWalking nếu cần cho các transition khác
                 animator.SetBool("IsWalking", true);
             }
         }

@@ -94,7 +94,6 @@ public class ActionController : MonoBehaviour
 
         if (Physics.Raycast(ray, out RaycastHit hit, 1.5f))
         {
-            // Vẫn giữ lại phần ĐẶT ĐỒ XUỐNG bằng chuột trái
             if (hit.collider.TryGetComponent<IPutItemFull>(out IPutItemFull itemPutBox))
             {
                 if (canPut)
@@ -107,44 +106,48 @@ public class ActionController : MonoBehaviour
                     }
                 }
             }
-            // Đã xóa lệnh nhận đồ (ItemBox) ở đây vì giờ ta dùng Trigger bên dưới
         }
     }
 
-    // --- ĐÂY LÀ PHẦN THÊM MỚI ĐỂ TỰ ĐỘNG NHẬN ĐỒ ---
+    // --- PHẦN LOGIC TƯƠNG TÁC TỰ ĐỘNG BẰNG TRIGGER ---
     private void OnTriggerEnter(Collider other)
     {
-        // Kiểm tra xem vật vừa chạm có phải là bàn chứa đồ không
+        // 1. Tương tác với Bàn chứa đồ (ItemBox)
         if (other.TryGetComponent<ItemBox>(out ItemBox itemBox))
         {
-            // Chỉ lấy đồ khi tay đang trống
-            if (inventory.CurrentType == ItemType.NONE)
+            // Nếu bàn đang có đồ và tay player đang trống rỗng
+            if (inventory.CurrentType == ItemType.NONE && itemBox.GetCurrentType() != ItemType.NONE)
             {
-                inventory.TakeItem(itemBox.GetItem());
-                Debug.Log("Đã tự động lấy: " + itemBox.GetItem());
+                inventory.TakeItem(itemBox.GetItem()); // Lấy đồ vào inventory
+                Debug.Log("Đã tự động lấy: " + inventory.CurrentType);
                 StartCoroutine(canPutCoolDown());
             }
         }
-    }
 
-    private void OnTriggerStay(Collider other)
-    {
-        // Nếu không cầm HAMBURGER thì thoát ra
-        if (inventory.CurrentType != ItemType.HAMBURGER) return;
-
-        // Nếu chạm vào Customer
-        if (other.gameObject.CompareTag("Customer"))
+        // 2. Tương tác với Khách Hàng
+        // Giữ nguyên dùng Tag "Customer" như bạn viết, hoặc dùng TryGetComponent cho an toàn
+        if (other.TryGetComponent<CustomerAI>(out CustomerAI customerAI))
         {
-            CustomerAI currentCustomer = other.GetComponent<CustomerAI>();
-
-            if (currentCustomer != null)
+            // Trường hợp 1: Tay người chơi trống rỗng -> Lại gần để chốt đơn
+            if (inventory.CurrentType == ItemType.NONE)
             {
-                currentCustomer.ReceiveFood(); // Báo cho khách biết đã nhận đồ
-                inventory.ClearHand();         // Ẩn Burger trên tay Player
-                Debug.Log("Đã giao HAMBURGER cho khách!");
+                customerAI.ConfirmOrder();
+            }
+            // Trường hợp 2: Tay người chơi có đồ ăn -> Thử giao đồ cho khách
+            else
+            {
+                // Truyền món ăn Player đang cầm (inventory.CurrentType) vào cho khách kiểm tra
+                bool isDelivered = customerAI.ReceiveFood(inventory.CurrentType);
+
+                // Nếu khách nhận (nghĩa là đúng món và khách đang chờ đồ)
+                if (isDelivered)
+                {
+                    inventory.ClearHand(); // Xóa đồ trên tay Player
+                    Debug.Log("Đã giao thành công món " + inventory.CurrentType + " cho khách!");
+                }
             }
         }
-    }   
+    }
 
     private IEnumerator canPutCoolDown()
     {

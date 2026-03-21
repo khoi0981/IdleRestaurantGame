@@ -1085,9 +1085,6 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 5ceb269f4eb163640845ab1c5c019a72, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 3175700678221831735}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 5ceb269f4eb163640845ab1c5c019a72, type: 3}
-      insertIndex: -1
       addedObject: {fileID: 3752972685293088504}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 5ceb269f4eb163640845ab1c5c019a72, type: 3}
       insertIndex: -1
@@ -1109,19 +1106,6 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 5ceb269f4eb163640845ab1c5c019a72, type: 3}
   m_PrefabInstance: {fileID: 84091007682717095}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &3175700678221831735
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1003081720342681846}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c3df565ac43cd7b4696029a55b38d61e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::Customer
-  burger: {fileID: 0}
 --- !u!195 &3752972685293088504
 NavMeshAgent:
   m_ObjectHideFlags: 0

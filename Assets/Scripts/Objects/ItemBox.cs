@@ -34,6 +34,19 @@ public class ItemBox : MonoBehaviour, IGetItem
         return item;
     }
 
+    public GameObject GetFoodModel(ItemType foodType)
+    {
+        switch (foodType)
+        {
+            case ItemType.HAMBURGER:
+                return burgerModel;
+            case ItemType.COOKEDMEAT:
+                return meatModel;
+            default:
+                return null;
+        }
+    }
+
     private void UpdateModelDisplay()
     {
         if (burgerModel != null) burgerModel.SetActive(false);

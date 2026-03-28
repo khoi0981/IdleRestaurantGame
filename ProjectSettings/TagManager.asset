@@ -6,15 +6,18 @@ TagManager:
   tags:
   - SellArea
   - Seat
+  - Customer
+  - WaittingPoint
+  - Table
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - NPC
   - Water
   - UI
-  - 
-  - 
+  - Seat
+  - Clickable
   - 
   - 
   - 

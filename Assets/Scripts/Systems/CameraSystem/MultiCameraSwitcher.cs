@@ -31,6 +31,10 @@ public class MultiCameraSwitcher : MonoBehaviour
     [Tooltip("Layer mask cho các đối tượng có thể nhấp")]
     public LayerMask targetObjectLayer;
     
+    [Header("Quản lý UI")]
+    [Tooltip("Script quản lý Table Upgrade Menu")]
+    public TableUpgradeMenuManager upgradeMenuManager;
+    
     [Header("Các View Camera")]
     [Tooltip("Danh sách tất cả các camera view có thể chuyển đổi")]
     [SerializeField] private List<CameraViewConfig> cameraViews = new List<CameraViewConfig>();
@@ -89,6 +93,7 @@ public class MultiCameraSwitcher : MonoBehaviour
 
     private void Update()
     {
+        if (MenuToggler.isOpen) return;
         HandleMouseClick();
     }
 
@@ -108,6 +113,17 @@ public class MultiCameraSwitcher : MonoBehaviour
                 {
                     Debug.Log($"[MultiCameraSwitcher] Tìm thấy config, chuyển đổi sang: {config.viewName}");
                     SwitchToView(config);
+                    
+                    // Cập nhật UpgradeMenu nếu object này là bàn
+                    if (upgradeMenuManager != null)
+                    {
+                        TableManager tableManager = clickedObject.GetComponent<TableManager>();
+                        if (tableManager != null)
+                        {
+                            upgradeMenuManager.SetTableAndDisplay(tableManager);
+                            Debug.Log($"[MultiCameraSwitcher] Đã cập nhật UpgradeMenu cho bàn {tableManager.myTableID}");
+                        }
+                    }
                 }
                 else
                 {

@@ -163,7 +163,38 @@ public class QueueManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Gọi khi khách hoàn thành dịch vụ
+    /// Gọi khi khách ngồi vào ghế (rời khỏi hàng chờ)
+    /// Xóa khách khỏi queue và dịch các khách còn lại lên
+    /// </summary>
+    public void CustomerSeated(GameObject customer)
+    {
+        if (npcInQueue.Count > 0 && npcInQueue[0] == customer)
+        {
+            npcInQueue.RemoveAt(0);
+            Debug.Log($"✅ Khách {customer.name} đã ngồi vào ghế. Xóa khỏi hàng. Còn lại: {npcInQueue.Count}");
+
+            // Cập nhật vị trí những khách còn lại (element 1 → element 0, v.v.)
+            UpdateQueuePositions();
+
+            // Thông báo khách mới đứng đầu (nếu có)
+            if (npcInQueue.Count > 0)
+            {
+                CustomerAI newFirstCustomer = npcInQueue[0].GetComponent<CustomerAI>();
+                if (newFirstCustomer != null)
+                {
+                    newFirstCustomer.IsFirstInQueue = true;
+                    Debug.Log($"👤 Khách mới đứng đầu hàng: {newFirstCustomer.gameObject.name}");
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning($"⚠️ Khách {customer.name} không phải người đứng đầu hàng!");
+        }
+    }
+
+    /// <summary>
+    /// Gọi khi khách hoàn thành dịch vụ (ăn xong, rời đi)
     /// </summary>
     public void CustomerFinished(GameObject customer)
     {

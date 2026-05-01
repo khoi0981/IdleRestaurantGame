@@ -78,6 +78,7 @@ public class ScrollAndPinch : MonoBehaviour
 
     private void Update()
     {
+        if (MenuToggler.isOpen) return;
 #if UNITY_IOS || UNITY_ANDROID
         HandleTouchInput();
 #else
@@ -106,7 +107,12 @@ public class ScrollAndPinch : MonoBehaviour
         }
 
         // Pan with left mouse button
-        if (Input.GetMouseButton(0))
+        if (Input.GetMouseButtonDown(0))
+        {
+            // Reset lastMousePos when mouse is first pressed to avoid large delta jump
+            lastMousePos = currentMousePos;
+        }
+        else if (Input.GetMouseButton(0))
         {
             Vector2 mouseDelta = currentMousePos - lastMousePos;
             
@@ -126,6 +132,12 @@ public class ScrollAndPinch : MonoBehaviour
                     Debug.Log("Pan: " + movement);
                 }
             }
+            lastMousePos = currentMousePos;
+        }
+        else if (Input.GetMouseButtonUp(0))
+        {
+            // Reset lastMousePos when mouse is released
+            lastMousePos = currentMousePos;
         }
 
         // Zoom with scroll wheel
@@ -146,8 +158,6 @@ public class ScrollAndPinch : MonoBehaviour
             ApplyCameraPosition(newPos);
             Debug.Log("Zoom: " + newPos.y);
         }
-
-        lastMousePos = currentMousePos;
     }
 
     private Vector3 GetCameraPosition()

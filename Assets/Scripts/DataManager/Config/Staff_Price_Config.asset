@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 06396d3bcab5d6d46ab7076d8011b152, type: 3}
+  m_Name: Staff_Price_Config
+  m_EditorClassIdentifier: Assembly-CSharp::StaffUpgradeConfig
+  serviceSpeedLevels:
+  - level: 0
+    cost: 0
+    speedValue: 1
+  - level: 1
+    cost: 0
+    speedValue: 1
+  - level: 2
+    cost: 200
+    speedValue: 1.1
+  - level: 3
+    cost: 300
+    speedValue: 1.2
+  hireStaffLevels:
+  - level: 0
+    cost: 0
+  - level: 1
+    cost: 0
+  - level: 2
+    cost: 100
+  - level: 3
+    cost: 200

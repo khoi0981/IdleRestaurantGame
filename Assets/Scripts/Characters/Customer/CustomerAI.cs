@@ -1,18 +1,21 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
+using System.Collections.Generic;
 
 public class CustomerAI : MonoBehaviour
 {
-    [Header("Menu & Order (Mới thêm)")]
-    public System.Collections.Generic.List<ItemType> availableMenu;
+    [Header("Order Information")]
     public ItemType currentOrder; // Public để Staff truy cập
     private bool hasOrdered = false;
 
     [Header("Cài đặt Đồ ăn & Trả tiền")]
     [SerializeField] private GameObject burgerModel;
-    [SerializeField] private int foodPrice = 50;
+    [SerializeField] private int foodPrice = 50; // Default giá, sẽ được override bởi FoodData
     [SerializeField] private float eatTime = 10f;
+    
+    [Header("Dữ liệu Thực phẩm")]
+    [SerializeField] private FoodDataList foodDataList; // Reference tới FoodDataList (auto-load từ Resources nếu null)
 
     [Header("Kết nối Hệ thống")]
     public Transform exitPoint;
@@ -26,13 +29,13 @@ public class CustomerAI : MonoBehaviour
     private CapsuleCollider capsuleCollider;
     private CustomerUI customerUI;
     private float waitingAtPointTimer = 0f;
-    private float waitingDuration = 2f;
     private Vector3 targetQueuePosition;
     private bool isInQueue = false;
     public bool hasBeenServedByStaff = false; // Tracking xem staff đã tới nhận đơn chưa
     public bool IsFirstInQueue = false; // Tracking xem có phải người đứng đầu hàng không
-    private bool hasReachedQueuePosition = false; // Tracking xem khách đã tới vị trí hàng chờ chưa
     private bool hasStartedFindingSeat = false; // Tracking xem đã bắt đầu tìm ghế chưa
+    private Coroutine seatCheckingCoroutine; // Coroutine để kiểm tra ghế mỗi 5 giây
+    private float seatCheckInterval = 5f; // Kiểm tra ghế mỗi 5 giây
 
     public enum CustomerState { InQueue, WalkingToWaitingPoint, WaitingAtWaitingPoint, WalkingToSeat, WaitingForFood, Eating, Leaving }
     public CustomerState currentState = CustomerState.InQueue;
@@ -131,9 +134,6 @@ public class CustomerAI : MonoBehaviour
                             animator.SetBool("IsWaiting", true);
                         }
 
-                        // Đánh dấu rằng khách đã tới vị trí hàng chờ
-                        hasReachedQueuePosition = true;
-                        
                         Debug.Log("Khách đã đến vị trí hàng chờ");
                         
                         // Nếu là người đứng đầu hàng và chưa bắt đầu tìm ghế, thì bắt đầu tìm
@@ -171,36 +171,17 @@ public class CustomerAI : MonoBehaviour
             }
         }
 
-        // --- XỬ LÝ TRẠNG THÁI: ĐỢI TẠI WAITING POINT ---
+        // --- XỰ LÝ TRẠNG THÁI: ĐỢI TẠI WAITING POINT ---
         if (currentState == CustomerState.WaitingAtWaitingPoint)
         {
             waitingAtPointTimer += Time.deltaTime;
-
-            if (waitingAtPointTimer >= waitingDuration)
+            if (animator != null)
             {
-                // Sau khi chờ xong, tìm ghế gần nhất
-                mySeat = FindClosestSeat();
-
-                if (mySeat != null && agent != null)
-                {
-                    mySeat.tag = "Untagged";
-                    if (animator != null)
-                    {
-                        animator.SetBool("IsWaiting", false);
-                        animator.SetBool("IsWalking", true);
-                    }
-
-                    agent.isStopped = false;
-                    agent.SetDestination(mySeat.transform.position);
-                    currentState = CustomerState.WalkingToSeat;
-                    Debug.Log("Khách bắt đầu đi tới ghế...");
-                }
-                else
-                {
-                    Debug.LogWarning("Không tìm thấy ghế trống!");
-                    LeaveRestaurant();
-                }
+                animator.SetBool("IsWaiting", true);
+                animator.SetBool("IsWalking", false);
             }
+
+          
         }
 
         // --- XỬ LÝ TRẠNG THÁI: ĐI TỚI GHẾ ---
@@ -213,7 +194,7 @@ public class CustomerAI : MonoBehaviour
                     if (!agent.hasPath || agent.velocity.sqrMagnitude < 0.2f)
                     {
                         agent.isStopped = true;
-                        if (animator != null) animator.SetBool("IsWalking", false);
+                        if (animator != null) animator.SetBool("IsWalking", true);
 
                         currentState = CustomerState.WaitingForFood;
                         Invoke("SitDownAndOrder", 0.5f);
@@ -242,9 +223,6 @@ public class CustomerAI : MonoBehaviour
             agent.SetDestination(queuePos);
             agent.isStopped = false;
             if (animator != null) animator.SetBool("IsWalking", true);
-
-            // Reset flags khi cập nhật vị trí hàng chờ (khách di chuyển sang vị trí mới)
-            hasReachedQueuePosition = false;
             
             // Chỉ reset hasStartedFindingSeat nếu khách không phải người đứng đầu
             // Nếu trở thành người đứng đầu, flag sẽ được set trong Update khi khách tới vị trí
@@ -263,7 +241,14 @@ public class CustomerAI : MonoBehaviour
     public void ResetFindingSeatFlag()
     {
         hasStartedFindingSeat = false;
-        hasReachedQueuePosition = false;
+
+        // Dừng coroutine kiểm tra ghế nếu đang chạy
+        if (seatCheckingCoroutine != null)
+        {
+            StopCoroutine(seatCheckingCoroutine);
+            seatCheckingCoroutine = null;
+            Debug.Log("Dừng coroutine kiểm tra ghế của khách " + gameObject.name);
+        }
     }
 
     /// <summary>
@@ -289,6 +274,7 @@ public class CustomerAI : MonoBehaviour
 
     /// <summary>
     /// Khách đầu tiên trong hàng bắt đầu tìm ghế
+    /// Sẽ kiểm tra ghế trống mỗi 5 giây
     /// </summary>
     private void StartFindingSeat()
     {
@@ -296,27 +282,40 @@ public class CustomerAI : MonoBehaviour
 
         Debug.Log("Khách đứng đầu hàng bắt đầu tìm ghế...");
 
-        // Nếu có waiting point, đi tới đó trước
-        if (waitingPoint != null && agent != null)
+        // Dừng coroutine cũ nếu đang chạy
+        if (seatCheckingCoroutine != null)
         {
-            if (animator != null)
-            {
-                animator.SetBool("IsWaiting", false);
-                animator.SetBool("IsWalking", true);
-            }
-
-            agent.isStopped = false;
-            agent.SetDestination(waitingPoint.position);
-            currentState = CustomerState.WalkingToWaitingPoint;
-            Debug.Log("Khách đầu tiên bắt đầu đi tới Waiting Point từ vị trí hàng chờ");
+            StopCoroutine(seatCheckingCoroutine);
         }
-        else
+
+        // Bắt đầu coroutine kiểm tra ghế mỗi 5 giây
+        seatCheckingCoroutine = StartCoroutine(CheckForSeatsCoroutine());
+    }
+
+    /// <summary>
+    /// Coroutine kiểm tra ghế trống mỗi 5 giây
+    /// Nếu tìm thấy ghế trống, sẽ đi tới đó
+    /// </summary>
+    private IEnumerator CheckForSeatsCoroutine()
+    {
+        while (IsFirstInQueue && currentState == CustomerState.InQueue)
         {
-            // Nếu không có waiting point, thẳng đi tới ghế
+            // Chờ 5 giây trước khi kiểm tra
+            yield return new WaitForSeconds(seatCheckInterval);
+
+            Debug.Log("Khách " + gameObject.name + " đang kiểm tra ghế có trống không...");
+
+            // Tìm ghế trống gần nhất
             mySeat = FindClosestSeat();
+
             if (mySeat != null && agent != null)
             {
+                Debug.Log("Tìm thấy ghế trống! Khách " + gameObject.name + " sẽ đi tới ghế");
+                
+                // Đánh dấu ghế là đã được sử dụng
                 mySeat.tag = "Untagged";
+
+                // Bắt đầu đi tới ghế
                 if (animator != null)
                 {
                     animator.SetBool("IsWaiting", false);
@@ -326,9 +325,20 @@ public class CustomerAI : MonoBehaviour
                 agent.isStopped = false;
                 agent.SetDestination(mySeat.transform.position);
                 currentState = CustomerState.WalkingToSeat;
-                Debug.Log("Khách đầu tiên bắt đầu đi thẳng tới ghế");
+                
+                Debug.Log("Khách " + gameObject.name + " bắt đầu đi tới ghế");
+                
+                // Dừng coroutine vì đã tìm thấy ghế
+                break;
+            }
+            else
+            {
+                Debug.Log("Khách " + gameObject.name + " chưa tìm thấy ghế trống, sẽ kiểm tra lại sau 5 giây");
             }
         }
+
+        // Nếu không còn là người đầu tiên hoặc đã thay đổi trạng thái, dừng coroutine
+        Debug.Log("Coroutine kiểm tra ghế của khách " + gameObject.name + " đã dừng");
     }
 
     private void SitDownAndOrder()
@@ -353,32 +363,172 @@ public class CustomerAI : MonoBehaviour
 
         Debug.Log("Khách đã ngồi xuống...");
 
+        // ✅ XÓA KHÁCH KHỎI QUEUE MANAGER KHI NGỒI VÀO GHẾ
+        if (QueueManager.Instance != null)
+        {
+            QueueManager.Instance.CustomerSeated(gameObject);
+        }
+
         // Reset flag để staff biết cần phục vụ
         hasBeenServedByStaff = false;
 
-        // --- LỰA CHỌN NGẪU NHIÊN MỘT MÓN ĂN TỪ MENU ---
-        if (availableMenu != null && availableMenu.Count > 0)
+        // ✅ LẤY DANH SÁCH FOOD ĐÃ MUA TỪ DATABASE
+        List<string> purchasedFoodIDs = GetPurchasedFoodsMenu();
+        
+        // ✅ KIỂM SOÁT CHẶT: CHỈ GỌI MÓN NẾU ĐÃ MUA
+        if (purchasedFoodIDs == null || purchasedFoodIDs.Count == 0)
         {
-            int randomIndex = Random.Range(0, availableMenu.Count);
-            currentOrder = availableMenu[randomIndex];
-            hasOrdered = false;
+            // ❌ KHÔNG CÓ MÓN NÀO ĐÃ MUA - KHÁCH PHẢI ĐI VỀ
+            Debug.LogError("❌ Khách không thể gọi món! Vì chưa có food được mua trong database");
+            
+            // Khách sẽ rời khỏi vì không có menu
+            if (agent != null) agent.enabled = true;
+            if (capsuleCollider != null) capsuleCollider.isTrigger = false;
+            
+            LeaveRestaurant();
+            return;
+        }
 
-            Debug.Log("Khách muốn gọi món: " + currentOrder);
+        // ✅ CÓ FOOD ĐÃ MUA - CHỌN NGẪU NHIÊN TỪ DANH SÁCH
+        int randomIndex = Random.Range(0, purchasedFoodIDs.Count);
+        string selectedFoodID = purchasedFoodIDs[randomIndex];
+        
+        Debug.Log($"📋 Danh sách food đã mua: {string.Join(", ", purchasedFoodIDs)}");
+        Debug.Log($"🎲 Khách chọn: {selectedFoodID}");
+        
+        // Chuyển đổi food ID sang ItemType
+        currentOrder = ConvertFoodIDToItemType(selectedFoodID);
+        
+        if (currentOrder == ItemType.NONE)
+        {
+            Debug.LogError($"❌ Lỗi: Không thể mapping Food ID '{selectedFoodID}' sang ItemType");
+            if (agent != null) agent.enabled = true;
+            if (capsuleCollider != null) capsuleCollider.isTrigger = false;
+            LeaveRestaurant();
+            return;
+        }
 
-            // --- HIỂN THỊ BUBBLE HIỂN THỊ MÓN ĂN ---
-            if (customerUI != null)
-            {
-                customerUI.ShowOrderBubble(currentOrder);
-                Debug.Log("Hiển thị bubble đặt hàng cho: " + currentOrder);
-            }
-            else
-            {
-                Debug.LogWarning("CustomerUI chưa được gán cho khách " + gameObject.name);
-            }
+        hasOrdered = false;
+        
+        // ✅ LẤY GIÁ TỪ FOODDATA
+        FoodData foodData = GetFoodDataByID(selectedFoodID);
+        if (foodData != null)
+        {
+            foodPrice = foodData.Price;
+            Debug.Log($"✅ Khách gọi món: {selectedFoodID} (ItemType: {currentOrder}, Price: {foodPrice} VND)");
         }
         else
         {
-            Debug.LogWarning("Menu trống! Khách không có lựa chọn món ăn");
+            Debug.LogWarning($"⚠️ Không tìm thấy FoodData cho ID: {selectedFoodID}, dùng default price: {foodPrice}");
+        }
+
+        // ✅ HIỂN THỊ BUBBLE
+        if (customerUI != null)
+        {
+            customerUI.ShowOrderBubble(currentOrder);
+            Debug.Log("✨ Bubble gọi món được hiển thị");
+        }
+        else
+        {
+            Debug.LogWarning("CustomerUI chưa được gán");
+        }
+    }
+
+    /// <summary>
+    /// Lấy danh sách Food đã mua từ DataManager
+    /// </summary>
+    private List<string> GetPurchasedFoodsMenu()
+    {
+        if (DataManager.Instance != null)
+        {
+            return DataManager.Instance.GetPurchasedFoodIDs();
+        }
+        
+        Debug.LogWarning("DataManager không tìm thấy!");
+        return new List<string>();
+    }
+
+    /// <summary>
+    /// Tìm FoodData theo Food ID
+    /// </summary>
+    private FoodData GetFoodDataByID(string foodID)
+    {
+        // 🔥 Nếu chưa có foodDataList, tìm bằng cách khác
+        if (foodDataList == null)
+        {
+            // Cách 1: Tìm trong toàn bộ project (nếu FoodDataList là ScriptableObject duy nhất)
+            FoodDataList[] allLists = Resources.FindObjectsOfTypeAll<FoodDataList>();
+            if (allLists.Length > 0)
+            {
+                foodDataList = allLists[0];
+                Debug.Log($"🔍 Tìm thấy FoodDataList: {foodDataList.name}");
+            }
+            else
+            {
+                Debug.LogError("❌ FoodDataList không tìm thấy! Hãy assign nó vào Customer Prefab!");
+                return null;
+            }
+        }
+        
+        if (foodDataList != null)
+        {
+            FoodData food = foodDataList.GetFoodByID(foodID);
+            if (food != null)
+            {
+                Debug.Log($"✅ Tìm thấy FoodData: ID={foodID}, Name={food.FoodName}, Price={food.Price}");
+                return food;
+            }
+            else
+            {
+                Debug.LogWarning($"⚠️ Không tìm thấy Food ID '{foodID}' trong FoodDataList!");
+            }
+        }
+        
+        return null;
+    }
+
+    /// <summary>
+    /// Chuyển đổi Food ID sang ItemType
+    /// Mapping: Food ID → ItemType
+    /// Hỗ trợ: "BIGBURGER", "1", "HAMBURGER", "MEATCOOKED", "2", "COOKEDMEAT"
+    /// </summary>
+    private ItemType ConvertFoodIDToItemType(string foodID)
+    {
+        if (string.IsNullOrEmpty(foodID))
+        {
+            Debug.LogError("❌ FoodID is null/empty!");
+            return ItemType.NONE;
+        }
+
+        // Chuẩn hóa food ID (bỏ dấu cách, chuyển sang uppercase)
+        string normalizedID = foodID.ToUpper().Replace(" ", "");
+        
+        // Mapping từ Food ID sang ItemType (hỗ trợ cả ID string và numeric)
+        switch (normalizedID)
+        {
+            // Big Burger / Hamburger
+            case "BIGBURGER":
+            case "BURGERFOOD":
+            case "BIGBURGERFOOD":
+            case "HAMBURGER":
+            case "1":  // 🔥 Thêm hỗ trợ numeric ID
+                return ItemType.HAMBURGER;
+                
+            // Meat Cooked / Cooked Meat
+            case "MEATCOOKED":
+            case "COOKEDMEAT":
+            case "MEETCOOKED":
+            case "MEETCOOKEDFOOD":
+            case "2":  // 🔥 Thêm hỗ trợ numeric ID
+                return ItemType.COOKEDMEAT;
+                
+            // ✅ Thêm các mapping khác nếu cần
+            // case "3":
+            //     return ItemType.PIZZA;
+            
+            default:
+                Debug.LogWarning($"⚠️ Không có mapping cho Food ID: '{foodID}' (normalized: '{normalizedID}')");
+                return ItemType.NONE;
         }
     }
 
@@ -389,14 +539,6 @@ public class CustomerAI : MonoBehaviour
             hasOrdered = true;
             hasBeenServedByStaff = true; // Đánh dấu rằng staff đã tới
             Debug.Log("Player đã chốt đơn món: " + currentOrder);
-
-            if (customerUI != null) customerUI.ShowWaitingBubble();
-
-            if (kitchenDesk != null)
-            {
-                kitchenDesk.SetType(currentOrder);
-                Debug.Log("Bếp đã lên món: " + currentOrder);
-            }
         }
     }
 
@@ -412,7 +554,8 @@ public class CustomerAI : MonoBehaviour
 
         Debug.Log("Khách đã nhận đúng món " + currentOrder + "!");
 
-        if (customerUI != null) customerUI.HideAllBubbles();
+        // ✅ Hiển thị eating bubble khi customer nhận đúng đồ ăn
+        if (customerUI != null) customerUI.ShowEatingBubble();
 
         if (burgerModel != null) burgerModel.SetActive(true);
 
@@ -454,6 +597,23 @@ public class CustomerAI : MonoBehaviour
     public void LeaveRestaurant()
     {
         currentState = CustomerState.Leaving;
+
+        // ✅ Ẩn eating bubble khi customer rời khỏi
+        if (customerUI != null) customerUI.HideEatingBubble();
+
+        // Dừng coroutine kiểm tra ghế nếu đang chạy
+        if (seatCheckingCoroutine != null)
+        {
+            StopCoroutine(seatCheckingCoroutine);
+            seatCheckingCoroutine = null;
+        }
+
+        // ✅ QUAN TRỌNG: Reset ghế tag từ "Untagged" → "Seat" để customer khác có thể ngồi
+        if (mySeat != null)
+        {
+            mySeat.tag = "Seat";
+            Debug.Log($"✅ Customer {gameObject.name} rời khỏi ghế. Reset tag ghế về 'Seat'");
+        }
 
         // Thông báo QueueManager nếu đang trong hàng
         if (queueManager != null && isInQueue)
